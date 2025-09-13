@@ -1,0 +1,194 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>LIMPIADOR DTF SEMITONOS</title>
+  <style>
+    body {
+      background: #0b0b0b;
+      color: #f5f5f5;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    h1 { color: #6ee7b7; }
+    #drop-area {
+      border: 2px dashed #6ee7b7;
+      padding: 20px;
+      margin-bottom: 20px;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+    }
+    #drop-area:hover { 
+      background: #111; 
+      transform: scale(1.02);
+    }
+    canvas {
+      max-width: 100%;
+      margin-top: 10px;
+      background: #1e1e1e;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+    button {
+      background: #6ee7b7;
+      color: #0b0b0b;
+      font-weight: bold;
+      border: none;
+      padding: 10px 20px;
+      margin: 10px 5px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1em;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.3s, transform 0.2s;
+    }
+    button:hover:not(:disabled) {
+      background: #34d399;
+      transform: scale(1.05);
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #result {
+      margin-top: 20px;
+      font-size: 1.3em;
+      font-weight: bold;
+    }
+    .ok { color: #22c55e; }
+    .no { color: #ef4444; }
+    .icon { font-size: 1.5em; vertical-align: middle; }
+    #clean-canvas { display: none; }
+  </style>
+</head>
+<body>
+  <h1>🖼️ LIMPIADOR DTF SEMITONOS</h1>
+  <div id="drop-area">
+    Arrastra una imagen PNG aquí o <input type="file" id="file-input" accept="image/png">
+  </div>
+  <div>
+    <button id="process-btn" disabled>⚡ Procesar</button>
+    <button id="download-btn" disabled>💾 Limpia y Descargar</button>
+  </div>
+
+  <h2>Imagen Original</h2>
+  <canvas id="original-canvas"></canvas>
+
+  <h2>Solo Semitransparencias (en rojo)</h2>
+  <canvas id="processed-canvas"></canvas>
+
+  <canvas id="clean-canvas"></canvas> <!-- para exportar limpio -->
+
+  <div id="result"></div>
+
+  <script>
+    const fileInput = document.getElementById('file-input');
+    const originalCanvas = document.getElementById('original-canvas');
+    const processedCanvas = document.getElementById('processed-canvas');
+    const cleanCanvas = document.getElementById('clean-canvas');
+    const processBtn = document.getElementById('process-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const resultDiv = document.getElementById('result');
+
+    let originalImage = null;
+    let imageProcessed = false;
+    let downloadCounter = 1; // contador de descargas
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.type !== 'image/png') {
+        alert('Por favor, sube una imagen PNG.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          originalCanvas.width = img.width;
+          originalCanvas.height = img.height;
+          const ctx = originalCanvas.getContext('2d');
+          ctx.clearRect(0,0,img.width,img.height);
+          ctx.drawImage(img, 0, 0);
+          originalImage = img;
+          processBtn.disabled = false;
+          downloadBtn.disabled = true;
+          resultDiv.textContent = '';
+          imageProcessed = false;
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    processBtn.addEventListener('click', () => {
+      if (!originalImage) return;
+      processBtn.textContent = '⌛ Procesando...';
+      setTimeout(() => {
+        const w = originalImage.width;
+        const h = originalImage.height;
+
+        processedCanvas.width = w;
+        processedCanvas.height = h;
+        const ctxProc = processedCanvas.getContext('2d');
+        ctxProc.clearRect(0,0,w,h);
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = w;
+        tempCanvas.height = h;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(originalImage, 0, 0);
+        const procData = tempCtx.getImageData(0, 0, w, h);
+        const procPixels = procData.data;
+
+        cleanCanvas.width = w;
+        cleanCanvas.height = h;
+        const ctxClean = cleanCanvas.getContext('2d');
+        ctxClean.drawImage(originalImage, 0, 0);
+        const cleanData = ctxClean.getImageData(0, 0, w, h);
+        const cleanPixels = cleanData.data;
+
+        let semiCount = 0;
+        for (let i = 0; i < procPixels.length; i += 4) {
+          const alpha = procPixels[i + 3];
+          if (alpha > 0 && alpha < 255) {
+            semiCount++;
+            procPixels[i] = 255; // R
+            procPixels[i+1] = 0; // G
+            procPixels[i+2] = 0; // B
+            procPixels[i+3] = 255;
+
+            cleanPixels[i+3] = 255;
+          } else {
+            procPixels[i+3] = 0;
+          }
+        }
+
+        ctxProc.putImageData(procData, 0, 0);
+        ctxClean.putImageData(cleanData, 0, 0);
+
+        if (semiCount === 0) {
+          resultDiv.innerHTML = `<span class="icon ok">✔️</span><span class="ok">OK PARA IMPRIMIR</span><br>(0 semitransparencias detectadas)`;
+        } else {
+          resultDiv.innerHTML = `<span class="icon no">❌</span><span class="no">IMAGEN NO APTA</span><br>(${semiCount.toLocaleString()} semitransparencias detectadas)`;
+        }
+
+        downloadBtn.disabled = false;
+        imageProcessed = true;
+        processBtn.textContent = '⚡ Procesar';
+      }, 100); // pequeño delay para mostrar efecto
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (!imageProcessed) return;
+      const filename = `imagen procesada ${downloadCounter}.png`;
+      downloadCounter++;
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = cleanCanvas.toDataURL('image/png');
+      link.click();
+    });
+  </script>
+</body>
+</html>
